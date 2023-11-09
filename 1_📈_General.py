@@ -7,8 +7,9 @@ import seaborn as sns
 from scipy.stats import kde
 from scipy.interpolate import griddata
 import os
+import ast
 
-from functools import lru_cache
+# from functools import lru_cache
 
 
 import warnings
@@ -91,18 +92,14 @@ with sidebar :
     family_filter = st.sidebar.multiselect('Select material family', df['materialfamily'].unique())
     properties_filter = st.sidebar.multiselect('Select properties', df['propertyname_y'].unique())
 
-    if properties_filter:  # Check if there is at least one property selected
+    if properties_filter:  
         st.sidebar.markdown('##### Enter ranges for selected properties:')
 
-    # Dictionary to hold the user input values for min and max for each property
     user_inputs = {}
 
-    # If the user has selected at least one property, show input fields for min and max
     for property_name in properties_filter:
-        # Create a subheader for the property using markdown for better visual distinction
         st.sidebar.markdown(f"**{property_name}**")
         
-        # For each property, create an indented section with a left arrow symbol
         left, right = st.sidebar.columns((1, 20))
         left.write("↳")
         
@@ -113,46 +110,32 @@ with sidebar :
         user_inputs[property_name] = {'min': min_val, 'max': max_val}
 
 
-# ... (previous code)
 
-# Initialize filter_df with the full DataFrame
 filter_df = df
 
-# Apply material family filter if selected
 if family_filter:
     filter_df = filter_df[filter_df["materialfamily"].isin(family_filter)]
 
-# Apply properties filter if any properties are selected
 if properties_filter:
-    # Filter by selected properties
     selected_properties_df = filter_df[filter_df["propertyname_y"].isin(properties_filter)]
     
-    # Initialize an empty DataFrame for filtered results
     filtered_properties_df = pd.DataFrame(columns=selected_properties_df.columns)
 
-    # For each selected property, apply additional filters based on user input
     for property_name in properties_filter:
-        # Select rows for current property only
         current_property_df = selected_properties_df[selected_properties_df["propertyname_y"] == property_name]
         
-        # Ensure user_inputs for the property exist
         if property_name in user_inputs:
-            # Retrieve user input values
             min_val = user_inputs[property_name].get('min')
             max_val = user_inputs[property_name].get('max')
 
-            # Apply min filter if a min value is provided and is a valid number
             if min_val :
                 current_property_df = current_property_df[current_property_df["y_value_at_300"] >= float(min_val)]
 
-            # Apply max filter if a max value is provided and is a valid number
             if max_val :
                 current_property_df = current_property_df[current_property_df["y_value_at_300"] <= float(max_val)]
 
-        # Combine the current property's filtered results back into the main filtered DataFrame
         filtered_properties_df = pd.concat([filtered_properties_df, current_property_df])
 
-    # If filtered_properties_df is not empty, update filter_df
     if not filtered_properties_df.empty:
         filter_df = filtered_properties_df
 
@@ -160,7 +143,7 @@ number_of_data = filter_df.shape[0]
 number_of_sample = filter_df["sampleid"].nunique()
 
 with title :
-    st.title('StarryData Visualization TE Experiment')
+    st.title('StarryData Visualization of TE Experiment')
     # if family_filter:
     #     st.markdown(f"#### Material Family: {family_filter[0]}")
     # else:
@@ -193,18 +176,9 @@ with general_plot :
 
 with dataframe :
     
-    @lru_cache(maxsize=None)
+    # @lru_cache(maxsize=None)
     def calculate_pivot(data, **kwargs):
-        """u
-        Calculates a pivot table for a given material and data.
 
-        Parameters:
-        data (pandas.DataFrame): The data to calculate the pivot table from.
-        **kwargs: Variable number of keyword arguments, where each key-value pair represents the property name and the associated value.
-
-        Returns:
-        pandas.DataFrame: The pivot table.
-        """
         properties = list(kwargs.values())
         material_data = data[data["propertyname_y"].isin(properties)]
         pivot = material_data.pivot_table(values='y_value_at_300', index='sampleid', columns='propertyname_y', aggfunc='mean').reset_index()
@@ -214,7 +188,6 @@ with dataframe :
         pivot_final.loc[pivot_final["materialfamily"] == "", "materialfamily"] = "Unknown"
         pivot_final.loc[pd.isna(pivot_final["materialfamily"]), "materialfamily"] = "Unknown"
         
-        # You can calculate 'result' for multiple properties
         #pivot_final[f"result"] = pivot_final[properties[1]]**2/pivot_final[properties[0]]
 
         return pivot_final
@@ -222,52 +195,41 @@ with dataframe :
    
 
     pivot_final = calculate_pivot(filter_df, **{f"property_{i}": prop for i, prop in enumerate(properties_filter)})
-    # Now you call the function with the selected properties
     # pivot_final = calculate_pivot(df, properties_filter)
-
-    # Do something with pivot_table, such as displaying it or further processing
-
     
     st.markdown("#### Pivot table material properties at 300K")
     st.markdown(f"Total data or sample plot : {pivot_final.shape[0]}")
     
     page_size = 5
 
-    # Use session state to store the current start index of the displayed page
     if 'start_idx' not in st.session_state:
-        st.session_state.start_idx = 0  # Initialize start index
+        st.session_state.start_idx = 0  
 
     format_mapping = {
-        # 'Seebeck coefficient': '{:.6f}',  # Format as a floating-point number with 2 decimal places
-        'Electrical resistivity': '{:.2e}',  # Format in scientific notation
-        # Add more columns and formats as needed
+        # 'Seebeck coefficient': '{:.6f}',  
+        'Electrical resistivity': '{:.2e}', 
     }
 
-    # Check if properties_filter is not empty, and if so, use it to update format_column
     if properties_filter:
         format_column = properties_filter
 
-    # Apply formatting to the specified columns in format_mapping
     for column, format_str in format_mapping.items():
         if column in properties_filter:
             pivot_final[column] = pivot_final[column].apply(lambda x: format_str.format(x))
-    # Display the current page of the DataFrame
     st.dataframe(pivot_final.iloc[st.session_state.start_idx:st.session_state.start_idx + page_size])
 
-    # Pagination buttons
     col1, col2 = st.columns(2)
+
     with col1:
         if st.button('Previous'):
-            # Go to the previous page
             if st.session_state.start_idx > 0:
                 st.session_state.start_idx -= page_size
+
     with col2:
         if st.button('Next'):
-            # Go to the next page
             if st.session_state.start_idx + page_size < len(df):
                 st.session_state.start_idx += page_size
 
-    # Use a placeholder to clear the previous dataframe from view
     placeholder = st.empty()
 
     st.markdown(" ---")
@@ -279,18 +241,16 @@ if len(properties_filter) > 1 and "ZT" in properties_filter:
 
         def scatterplot_thermal_pf(data, x_feature="Thermal conductivity", y_feature="Power factor", on=False, hue = None):
             
-            num_data = data.shape[0]  # Get the number of data
+            num_data = data.shape[0]  
 
             plt.figure(figsize=(10, 6))
 
 
-            # Create the scatter plot
             sns.scatterplot(data=data, x=x_feature, y=y_feature, hue=hue, palette='bright', alpha=0.7, s=50)
 
-            # Annotate the top 5 materials with an offset if annotate is True
             top5_materials = data.sort_values(by="ZT", ascending=False).head(5)
             if on :
-                offset = (5, 5)  # You can adjrust the offset as needed
+                offset = (5, 5) 
                 for index, row in top5_materials.iterrows():
                     plt.annotate(
                         f"{row['composition']} ({row['materialfamily']})",
@@ -306,7 +266,6 @@ if len(properties_filter) > 1 and "ZT" in properties_filter:
             plt.xlabel(f"{x_feature} ({unit_x})", fontweight='bold')
             plt.ylabel(f"{y_feature} ({unit_y})", fontweight='bold')
         
-            # After creating the original plot (e.g., in a Jupyter notebook)
             
         
             plt.legend(title=f"Number of data: {num_data}", bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
@@ -326,18 +285,14 @@ if len(properties_filter) > 1 and "ZT" in properties_filter:
 
             top5_materials = data.sort_values(by="ZT", ascending=False).head(5)
 
-            # Create a colormap
             colormap = plt.cm.magma
 
-            # Create a Normalize object
             norm = mcolors.Normalize(vmin=data['ZT'].min(), vmax=data['ZT'].max())
 
-            # Create the scatter plot with a color bar
             scatter = plt.scatter(data[x_feature], data[y_feature], c=data['ZT'], cmap=colormap, norm=norm, alpha=0.7, s=50)
 
-            # Annotate the top 5 materials with an offset if annotate is True
             if on:
-                offset = (5, 5)  # You can adjust the offset as needed
+                offset = (5, 5)  
                 for index, row in top5_materials.iterrows():
                     plt.annotate(
                         f"{row['composition']} ({row['materialfamily']})",
@@ -361,7 +316,6 @@ if len(properties_filter) > 1 and "ZT" in properties_filter:
                 plt.ylabel(f"Log {y_feature} ({unit_y})")
       
 
-            # Add a color bar
             cbar = plt.colorbar(scatter)
             cbar.set_label("ZT")
 
@@ -373,39 +327,30 @@ if len(properties_filter) > 1 and "ZT" in properties_filter:
                                                         x_feature: str = "Thermal conductivity", 
                                                         y_feature: str = "Power factor", 
                                                         on: bool = True) -> None:
-            """Generate a scatterplot with heatmap coloring and contour lines based on point density."""
 
             plt.figure(figsize=(10, 6))
 
-            # Getting the top 5 materials based on ZT
             top5_materials = data.sort_values(by="ZT", ascending=False).head(5)
 
-            # Setting up the colormap and normalization
             colormap = plt.cm.magma
             norm = mcolors.Normalize(vmin=data['ZT'].min(), vmax=data['ZT'].max())
 
-            # Convert to numeric and handle non-numeric entries
             x = pd.to_numeric(data[x_feature], errors='coerce')
             y = pd.to_numeric(data[y_feature], errors='coerce')
 
-            # Drop NaN values that result from the conversion
             mask = np.isfinite(x) & np.isfinite(y)
             x = x[mask]
             y = y[mask]
 
-            # Perform the kernel density estimate
             nbins = 100
             k = kde.gaussian_kde([x,y])
             xi, yi = np.mgrid[x.min():x.max():nbins*1j, y.min():y.max():nbins*1j]
             zi = k(np.vstack([xi.flatten(), yi.flatten()]))
 
-            # Plotting the contour
             contour = plt.contourf(xi, yi, zi.reshape(xi.shape), cmap="viridis", alpha=0.7)
 
-            # Plotting the scatter plot over the contour
             scatter = plt.scatter(x, y, c=data.loc[mask, 'ZT'], cmap=colormap, norm=norm, alpha=0.7, s=20)
 
-            # Annotation for the top 5 materials
             if on:
                 offset = (5, 5)
                 for _, row in top5_materials.iterrows():
@@ -416,30 +361,18 @@ if len(properties_filter) > 1 and "ZT" in properties_filter:
                         xytext=offset
                     )
 
-            # Assuming 'df' is the DataFrame that contains the units for the features
             unit_x = df[df["propertyname_y"]==x_feature]["unitname_y"].value_counts().index[0]
             unit_y = df[df["propertyname_y"]==y_feature]["unitname_y"].value_counts().index[0]
 
             plt.xlabel(f"{x_feature} ({unit_x})")
             plt.ylabel(f"{y_feature} ({unit_y})")
 
-            # Adding title and colorbar
             plt.title(f"{x_feature} vs {y_feature}")
             cbar = plt.colorbar(contour, format='')
             cbar.set_label("Density Data")
 
-            # Display the plot
             plt.tight_layout()
-            st.pyplot(plt)  # Use plt.show() in a local environment. Replace with st.pyplot() for Streamlit.
-
-        # To use this function in a Streamlit app, make sure to pass a properly formatted DataFrame
-        # and uncomment the st.pyplot() call at the end of the function.
-
-
-
-
-
-
+            st.pyplot(plt)  
 
         st.markdown(f"#### Scatterplot of {properties_filter[0]} vs {properties_filter[1]} at 300K")
         st.write(f"Total data or sample plot : {pivot_final.shape[0]}") 
@@ -503,48 +436,38 @@ if "Carrier concentration" not in properties_filter and len(properties_filter) >
             colormap = plt.cm.magma
             norm = mcolors.Normalize(vmin=data['ZT'].min(), vmax=data['ZT'].max())
 
-            # Convert to numeric and handle non-numeric entries
             x = pd.to_numeric(data[x_feature], errors='coerce')
             y = pd.to_numeric(data[y_feature], errors='coerce')
             z = pd.to_numeric(data[z_feature], errors='coerce')
 
-            # Drop NaN or infinite values that result from the conversion
             mask = np.isfinite(x) & np.isfinite(y) & np.isfinite(z)
             x = x[mask]
             y = y[mask]
             z = z[mask]
 
-            # Check that we have enough data points after removing NaNs and Infs
             if x.size == 0 or y.size == 0 or z.size == 0:
                 raise ValueError("After cleaning the data, no valid points remain.")
 
-            # Create grid coordinates for contour plot
             xi = np.linspace(x.min(), x.max(), 20)
             yi = np.linspace(y.min(), y.max(), 20)
             xi, yi = np.meshgrid(xi, yi)
 
-            # Interpolate z values on a grid defined by X and Y
             zi = griddata((x, y), z, (xi, yi), method='linear')
 
-            # Plot contour lines
             contour_lines = plt.contour(xi, yi, zi, levels=14, linewidths=0.5, colors='k')
             contour_filled = plt.contourf(xi, yi, zi, levels=14, cmap=colormap)
 
-            # Plotting the scatter plot over the contour
             scatter = plt.scatter(x, y, c=z, cmap=colormap, s=30)
 
-            # Adding colorbar
             cbar = plt.colorbar(contour_filled)
             cbar.set_label(z_feature)
 
-            # Adding titles and labels
             unit_x = df[df["propertyname_y"]==x_feature]["unitname_y"].value_counts().index[0]
             unit_y = df[df["propertyname_y"]==y_feature]["unitname_y"].value_counts().index[0]
 
             plt.xlabel(f"{x_feature} ({unit_x})")
             plt.ylabel(f"{y_feature} ({unit_y})")
 
-            # Adding title and colorbar
             plt.title(f'Scatter plot with contour lines for {x_feature} vs {y_feature}')
 
             st.pyplot(plt)
@@ -566,11 +489,9 @@ if len(properties_filter)>0:
 
         fig, ax = plt.subplots(nrows=len(properties_filter), ncols=1, figsize=(8, 6))
 
-        # Define a list of colors
         colors = ['red', 'green', 'blue', 'orange', 'purple']
 
         for i, pro in enumerate(properties_filter):
-            # Pass the color to the palette parameter
             sns.boxplot(x=pro, data=pivot_final, ax=ax[i], palette=[colors[i]])
             plt.tight_layout()
         
@@ -604,28 +525,13 @@ if len(properties_filter) > 0:
             all_y_values = []
             hue_values = []
 
-            # Helper function to handle iterable and non-iterable values
-            # def get_iterable(value):
-            #     if isinstance(value, (list, tuple)):
-            #         return value
-            #     elif isinstance(value, dict):
-            #         return [value]
-            #     else:
-            #         return [value]
+            
 
-            import ast
-
-    # Helper function to handle iterable and non-iterable values
             def get_iterable(value):
                 if isinstance(value, str):
                     try:
-                        # Safely evaluate string as a Python literal
                         value = ast.literal_eval(value)
-                    except (ValueError, SyntaxError):
-                        # Handle the case where the string is not a valid Python literal
-                        # This depends on your data; you might want to return an empty list or dictionary
-                        # or handle it some other way
-                        
+                    except (ValueError, SyntaxError):                        
                         value = []
 
                 if isinstance(value, (list, tuple)):
@@ -635,18 +541,13 @@ if len(properties_filter) > 0:
                 else:
                     return [value]
 
-
-            # Iterate through each row in the dataset
             for _, row in pivot_final.iterrows():
                 
                 prop = get_iterable(row[property_name])
                 zt_values = get_iterable(row['ZT'])
                 
                 for point_s, point_z in zip(prop, zt_values):
-                    
-                    # print(f"Type of point_s: {type(point_s)}, Value: {point_s}")  # Add this line
-                    # print(f"Type of point_z: {type(point_z)}, Value: {point_z}")  # Add this line
-                    
+                                        
                     if min_temp <= point_s['x'] < max_temp and min_data < point_s['y'] < max_data:
                         all_x_values.append(point_s['x'])
                         all_y_values.append(point_s['y'])
@@ -656,11 +557,7 @@ if len(properties_filter) > 0:
                         elif hue == "materialfamily":
                             hue_values.append(row['materialfamily'])
 
-            # x_filtered = [x for x in all_x_values if x >= 300 and x <= 1000 ]
-            # y_filtered = [y for y in all_y_values if y >= -10 and y <= 0.005 ]
-            # z_filtered = [z for z in hue_values if z >= 0 and z <= 2.5 ]
-
-            # return x_filtered, y_filtered, z_filtered
+         
             return all_x_values, all_y_values, hue_values
         
 
@@ -669,7 +566,6 @@ if len(properties_filter) > 0:
 
             fig, ax = plt.subplots(figsize=(8, 4))
 
-            # Plotting
             if hue == "ZT":
                 vmin = min(hue_values)
                 vmax = max(hue_values)
@@ -696,22 +592,10 @@ if len(properties_filter) > 0:
             plt.xlabel(f"Temperature (K)")
             plt.ylabel(f"{property} ({unit_y})")
 
-            # Adding title and colorbar
             plt.title(f"{property} vs Temperature")
-
-            # Add a color bar
-
 
             plt.tight_layout()
             st.pyplot(fig)
-            # Load the dataset
-            # dataset = pd.read_csv('/mnt/data/dataset.csv')
-            # Convert string representation of lists to actual lists
-            # dataset['Seebeck coefficient'] = dataset['Seebeck coefficient'].apply(ast.literal_eval)
-            # dataset['ZT'] = dataset['ZT'].apply(ast.literal_eval)
-
-            # Test the function with this dataset
-
 
         left, right = st.columns(2)
 
@@ -778,12 +662,3 @@ if len(properties_filter) > 0:
 
                     scatter_plot_prop_temp_safe(x,y,z, property="ZT", hue="materialfamily", log=False, annotate=False)
             
-
-    #     fig, ax = plt.subplots()
-
-    # # Create a scatter plot on the axes
-    #     sns.scatterplot(x=x, y=y, ax=ax)
-
-    #     # Display the figure using Streamlit
-    #     st.pyplot(fig)
-
