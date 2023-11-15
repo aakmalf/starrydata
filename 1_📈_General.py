@@ -20,7 +20,8 @@ st.set_page_config(layout="wide", page_title="StarryData Visualization", page_ic
 
 @st.cache_data
 def load_data():
-    df = pd.read_csv('thermo.csv')
+    file_path = os.path.join(os.path.dirname(__file__), 'thermo.csv')
+    df = pd.read_csv(file_path, index_col=0)
     return df
 
 df = load_data()
